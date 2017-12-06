@@ -1,0 +1,140 @@
+<head>
+  <!-- Plotly.js -->
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="data.js"></script>
+</head>
+
+<body>
+<div id="divA"></div>
+<div id="divB"></div>
+<div id="divC"></div>
+<script type="text/javascript">
+/// Variables from plotly.js
+var roundingError = 1e-9;
+var BADNUM = undefined;
+/// Functions from plotly.js
+function lessThan(a, b) { return a < b; }
+function lessOrEqual(a, b) { return a <= b; }
+function greaterThan(a, b) { return a > b; }
+function greaterOrEqual(a, b) { return a >= b; }
+
+init2dArray = function(rowLength, colLength) {
+    var array = new Array(rowLength);
+    for(var i = 0; i < rowLength; i++) array[i] = new Array(colLength);
+    return array;
+};
+
+sorterAsc = function(a, b) { return a - b; };
+
+distinctVals = function(valsIn) {
+    var vals = valsIn.slice();  // otherwise we sort the original array...
+    vals.sort(sorterAsc);
+
+    var l = vals.length - 1,
+        minDiff = (vals[l] - vals[0]) || 1,
+        errDiff = minDiff / (l || 1) / 10000,
+        v2 = [vals[0]];
+
+    for(var i = 0; i < l; i++) {
+        // make sure values aren't just off by a rounding error
+        if(vals[i + 1] > vals[i] + errDiff) {
+            minDiff = Math.min(minDiff, vals[i + 1] - vals[i]);
+            v2.push(vals[i + 1]);
+        }
+    }
+
+    return {vals: v2, minDiff: minDiff};
+};
+
+findBin = function(val, bins, linelow) {
+    // if(isNumeric(bins.start)) {
+    // return linelow ?
+    //         Math.ceil((val - bins.start) / bins.size - roundingError) - 1 :
+    //         Math.floor((val - bins.start) / bins.size + roundingError);
+    // }
+    // else {
+        var n1 = 0;
+        var n2 = bins.length;
+        var c = 0;
+        var binSize = (n2 > 1) ? (bins[n2 - 1] - bins[0]) / (n2 - 1) : 1;
+        var n, test;
+        if(binSize >= 0) {
+            test = linelow ? lessThan : lessOrEqual;
+        } else {
+            test = linelow ? greaterOrEqual : greaterThan;
+        }
+        val += binSize * roundingError * (linelow ? -1 : 1) * (binSize >= 0 ? 1 : -1);
+        // c is just to avoid infinite loops if there's an error
+        while(n1 < n2 && c++ < 100) {
+            n = Math.floor((n1 + n2) / 2);
+            if(test(bins[n], val)) n1 = n + 1;
+            else n2 = n;
+        }
+        if(c > 90) loggers.log('Long binary search...');
+        return n1 - 1;
+    // }
+};
+
+/////////////// DATA /////////
+// ADD 1D x,y,z data
+
+var x = data['x'], 
+    y = data['y'],
+    z = data['z'];
+
+
+//// Create 2D data based on:
+// https://github.com/plotly/plotly.js/blob/master/src/traces/heatmap/convert_column_xyz.js
+var var1Name = var1Name || 'x',
+    var2Name = var2Name || 'y',
+    arrayVarNames = arrayVarNames || ['z'];
+
+var col1 = x.slice(),
+    col2 = y.slice(),
+    colLen = Math.min(col1.length, col2.length);
+
+var i, j, arrayVar, newArray, arrayVarName;
+
+arrayVar = z.slice();
+if(arrayVar) colLen = Math.min(colLen, arrayVar.length);
+if(colLen < col1.length) col1 = col1.slice(0, colLen);
+if(colLen < col2.length) col2 = col2.slice(0, colLen);
+
+var col1dv = distinctVals(col1),
+    col1vals = col1dv.vals,
+    col2dv = distinctVals(col2),
+    col2vals = col2dv.vals,
+    newArrays = [];
+
+for(i = 0; i < arrayVarNames.length; i++) {
+    newArrays[i] = init2dArray(col2vals.length, col1vals.length);
+}
+
+var i1, 
+    i2;
+
+for(i = 0; i < colLen; i++) {
+    if(col1[i] !== BADNUM && col2[i] !== BADNUM) {
+          i1 = findBin(col1[i] + col1dv.minDiff / 2, col1vals);
+          i2 = findBin(col2[i] + col2dv.minDiff / 2, col2vals);
+
+        for(j = 0; j < arrayVarNames.length; j++) {
+            arrayVarName = arrayVarNames[j];
+            newArray = newArrays[j];
+            newArray[i2][i1] = arrayVar[i];
+        }
+      }
+    }
+
+//////// PLOT Calculated Values ///////////
+var dataA = [
+  { x: col1vals,
+    y: col2vals,
+    z: newArray,
+    type: 'heatmap'
+  }
+];
+
+Plotly.newPlot('divA', dataA);
+</script>
+</body>
